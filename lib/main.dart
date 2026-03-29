@@ -324,11 +324,11 @@ Future<void> recommendPlace() async {
   final reasoning = item['reasoning'] as List<dynamic>? ?? [];
 
   return Card(
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+     child: Padding(
+       padding: const EdgeInsets.all(16),
+       child: Column(
+         crossAxisAlignment: CrossAxisAlignment.start,
+         children: [
           Text(
             item['name'] ?? '',
             style: const TextStyle(
@@ -349,9 +349,10 @@ Future<void> recommendPlace() async {
           ),
           const SizedBox(height: 8),
           ...reasoning.take(3).map((item) => Text('• $item')),
-        ],
-      ),
-    ),
+         ],
+       ),
+     ),
+
   );
 }
 }
