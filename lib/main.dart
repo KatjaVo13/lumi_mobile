@@ -1,6 +1,5 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
 
 void main() {
   runApp(const LumiApp());
@@ -17,100 +16,150 @@ class LumiApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: const LumiHomePage(),
+      home: const LoadingScreen(),
     );
   }
 }
 
-class LumiHomePage extends StatefulWidget {
-  const LumiHomePage({super.key});
+class LoadingScreen extends StatefulWidget {
+  const LoadingScreen({super.key});
 
   @override
-  State<LumiHomePage> createState() => _LumiHomePageState();
+  State<LoadingScreen> createState() => _LoadingScreenState();
 }
 
-class _LumiHomePageState extends State<LumiHomePage> {
-   final String baseUrl = 'http://192.168.60.82:8000';
-
-  String statusMessage = 'Tap the button to load likes';
-  bool isLoading = false;
-  List<dynamic> likes = [];
-
-  Future<void> loadLikes() async {
-    setState(() {
-      isLoading = true;
-      statusMessage = 'Loading likes...';
-    });
-
-    try {
-      final response = await http.get(Uri.parse('$baseUrl/likes'));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        if (data is List) {
-          setState(() {
-            likes = data;
-            statusMessage = data.isEmpty ? 'No liked places yet' : 'Loaded';
-          });
-        } else {
-          setState(() {
-            likes = [];
-            statusMessage = 'Unexpected response format';
-          });
-        }
-      } else {
-        setState(() {
-          likes = [];
-          statusMessage = 'Server error: ${response.statusCode}';
-        });
-      }
-    } catch (e) {
-      setState(() {
-        likes = [];
-        statusMessage = 'Connection failed: $e';
-      });
-    } finally {
-      setState(() {
-        isLoading = false;
-      });
-    }
+class _LoadingScreenState extends State<LoadingScreen> {
+  @override
+  void initState() {
+    super.initState();
+    goNext();
   }
 
-  Widget buildLikeCard(dynamic item) {
-    final tags = item['tags'] is List ? (item['tags'] as List).join(', ') : '';
+  Future<void> goNext() async {
+    await Future.delayed(const Duration(seconds: 2));
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              item['place_name'] ?? 'Unknown place',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text('Category: ${item['category'] ?? '-'}'),
-            Text('Area: ${item['area'] ?? '-'}'),
-            const SizedBox(height: 8),
-            Text(item['description'] ?? ''),
-            if (tags.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text('Tags: $tags'),
-            ],
-          ],
-        ),
+    if (!mounted) return;
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => const HomeScreen(),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Lumi',
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 16),
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Loading...'),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  String locationStatus = 'Checking location...';
+  String? selectedCity = 'Helsinki';
+  String selectedMood = 'curious';
+  String recommendationText = '';
+
+  final List<String> cities = ['Helsinki', 'Espoo'];
+  final List<String> moods = ['curious', 'calm', 'adventurous', 'romantic'];
+
+  @override
+  void initState() {
+    super.initState();
+    initLocation();
+  }
+
+  Future<void> initLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          locationStatus = 'Location services are off';
+        });
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.denied) {
+        setState(() {
+          locationStatus = 'Location not allowed';
+        });
+        return;
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          locationStatus = 'Location permanently denied';
+        });
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition();
+
+      setState(() {
+        locationStatus =
+            'Location found: ${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+      });
+    } catch (e) {
+      setState(() {
+        locationStatus = 'Location error: $e';
+      });
+    }
+  }
+
+  void recommendPlace() {
+    final bool noLocation =
+        locationStatus == 'Location not allowed' ||
+        locationStatus == 'Location permanently denied' ||
+        locationStatus == 'Location services are off' ||
+        locationStatus.startsWith('Location error');
+
+    setState(() {
+      recommendationText =
+          'Lumi will recommend a place here.\n\n'
+          'City: ${noLocation ? (selectedCity ?? '-') : 'from current location'}\n'
+          'Mood: $selectedMood';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool noLocation =
+        locationStatus == 'Location not allowed' ||
+        locationStatus == 'Location permanently denied' ||
+        locationStatus == 'Location services are off' ||
+        locationStatus.startsWith('Location error');
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Lumi'),
@@ -118,34 +167,66 @@ class _LumiHomePageState extends State<LumiHomePage> {
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Liked places',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+            Text(locationStatus),
+            const SizedBox(height: 16),
+            if (noLocation) ...[
+              const Text('Select city'),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: selectedCity,
+                items: cities
+                    .map(
+                      (city) => DropdownMenuItem(
+                        value: city,
+                        child: Text(city),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    selectedCity = value;
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+            const Text('Select mood'),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: selectedMood,
+              items: moods
+                  .map(
+                    (mood) => DropdownMenuItem(
+                      value: mood,
+                      child: Text(mood),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() {
+                  selectedMood = value;
+                });
+              },
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: recommendPlace,
+                child: const Text('Recommend a place'),
               ),
             ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: isLoading ? null : loadLikes,
-              child: const Text('Load likes'),
-            ),
-            const SizedBox(height: 12),
-            Text(statusMessage),
-            const SizedBox(height: 12),
-            Expanded(
-              child: likes.isEmpty
-                  ? const Center(
-                      child: Text('No items to show'),
-                    )
-                  : ListView.builder(
-                      itemCount: likes.length,
-                      itemBuilder: (context, index) {
-                        return buildLikeCard(likes[index]);
-                      },
-                    ),
-            ),
+            const SizedBox(height: 24),
+            if (recommendationText.isNotEmpty)
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(recommendationText),
+                ),
+              ),
           ],
         ),
       ),
