@@ -92,6 +92,7 @@ final String baseUrl = 'http://192.168.60.82:8000';
   String recommendationText = '';
   Map<String, dynamic>? recommendation;
   bool isLoadingRecommendation = false;
+  List<dynamic> recommendations = [];
 
   final List<String> cities = ['Helsinki', 'Espoo'];
   final List<String> moods = ['curious', 'calm', 'adventurous', 'romantic'];
@@ -150,6 +151,7 @@ Future<void> recommendPlace() async {
     isLoadingRecommendation = true;
     recommendationText = '';
     recommendation = null;
+    recommendations = [];
   });
 
   final bool noLocation =
@@ -187,11 +189,20 @@ Future<void> recommendPlace() async {
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
 
-      if (data["suggestions"] != null && data["suggestions"].isNotEmpty) {
-        setState(() {
-          recommendation = data["suggestions"][0];
-        });
-      } else {
+    if (data["suggestions"] != null && data["suggestions"].isNotEmpty) {
+      final List<dynamic> items = List<dynamic>.from(data["suggestions"]);
+
+      items.sort((a, b) {
+       final scoreA = a["score"] ?? 0;
+       final scoreB = b["score"] ?? 0;
+       return scoreB.compareTo(scoreA);
+      });
+
+      setState(() {
+      recommendations = items.take(3).toList();
+      recommendation = recommendations.isNotEmpty ? recommendations[0] : null;
+      });
+    } else {
         setState(() {
           recommendationText = 'No suggestions found';
         });
@@ -224,19 +235,21 @@ Future<void> recommendPlace() async {
       appBar: AppBar(
         title: const Text('Lumi'),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(locationStatus),
-            const SizedBox(height: 16),
-            if (noLocation) ...[
-              const Text('Select city'),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: selectedCity,
-                items: cities
+    body: SafeArea(
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(locationStatus),
+              const SizedBox(height: 16),
+              if (noLocation) ...[
+                const Text('Select city'),
+                const SizedBox(height: 8),
+               DropdownButtonFormField<String>(
+                  value: selectedCity,
+                  items: cities
                     .map(
                       (city) => DropdownMenuItem(
                         value: city,
@@ -244,19 +257,19 @@ Future<void> recommendPlace() async {
                       ),
                     )
                     .toList(),
-                onChanged: (value) {
-                  setState(() {
-                    selectedCity = value;
-                  });
-                },
-              ),
-              const SizedBox(height: 16),
-            ],
-            const Text('Select mood'),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              value: selectedMood,
-              items: moods
+                  onChanged: (value) {
+                    setState(() {
+                      selectedCity = value;
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
+              const Text('Select mood'),
+              const SizedBox(height: 8),
+             DropdownButtonFormField<String>(
+                value: selectedMood,
+                items: moods
                   .map(
                     (mood) => DropdownMenuItem(
                       value: mood,
@@ -264,49 +277,51 @@ Future<void> recommendPlace() async {
                     ),
                   )
                   .toList(),
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() {
-                  selectedMood = value;
-                });
-              },
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: recommendPlace,
-                child: const Text('Recommend a place'),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() {
+                    selectedMood = value;
+                  });
+                },
               ),
-            ),
-            const SizedBox(height: 24),
-            if (isLoadingRecommendation) ...[
               const SizedBox(height: 24),
-              const Center(child: CircularProgressIndicator()),
-            ] else if (recommendation != null) ...[
-              const SizedBox(height: 24),
-              buildRecommendationCard(),
-            ] else if (recommendationText.isNotEmpty) ...[
-              const SizedBox(height: 24),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(recommendationText),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: recommendPlace,
+                  child: const Text('Recommend a place'),
                 ),
               ),
-            ]
-          ],
+              const SizedBox(height: 24),
+              if (isLoadingRecommendation) ...[
+                const SizedBox(height: 24),
+                const Center(child: CircularProgressIndicator()),
+            ] else if (recommendations.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                ...recommendations.map((item) => buildRecommendationCard(item)),
+            ] else if (recommendationText.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(recommendationText),
+                  ),
+                ),
+          ]
+             ],
+          ),
         ),
       ),
+    ),
     );
   }
 
-  Widget buildRecommendationCard() {
+  Widget buildRecommendationCard(dynamic item) {
   if (recommendation == null) {
     return const SizedBox.shrink();
   }
 
-  final reasoning = recommendation!['reasoning'] as List<dynamic>? ?? [];
+  final reasoning = item['reasoning'] as List<dynamic>? ?? [];
 
   return Card(
     child: Padding(
@@ -315,18 +330,18 @@ Future<void> recommendPlace() async {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            recommendation!['name'] ?? '',
+            item['name'] ?? '',
             style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 8),
-          Text(recommendation!['description'] ?? ''),
+          Text(item['description'] ?? ''),
           const SizedBox(height: 12),
-          Text('Area: ${recommendation!['area'] ?? '-'}'),
-          Text('Category: ${recommendation!['category'] ?? '-'}'),
-          Text('Address: ${recommendation!['address'] ?? '-'}'),
+          Text('Area: ${item['area'] ?? '-'}'),
+          Text('Category: ${item['category'] ?? '-'}'),
+          Text('Address: ${item['address'] ?? '-'}'),
           const SizedBox(height: 12),
           const Text(
             'Why this place',
