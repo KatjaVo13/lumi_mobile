@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
+
 
 void main() {
   runApp(const LumiApp());
@@ -90,6 +90,8 @@ final String baseUrl = 'http://192.168.60.82:8000';
   String? selectedCity = 'Helsinki';
   String selectedMood = 'curious';
   String recommendationText = '';
+  Map<String, dynamic>? recommendation;
+  bool isLoadingRecommendation = false;
 
   final List<String> cities = ['Helsinki', 'Espoo'];
   final List<String> moods = ['curious', 'calm', 'adventurous', 'romantic'];
@@ -145,7 +147,9 @@ final String baseUrl = 'http://192.168.60.82:8000';
 
 Future<void> recommendPlace() async {
   setState(() {
-    recommendationText = 'Lumi is thinking...';
+    isLoadingRecommendation = true;
+    recommendationText = '';
+    recommendation = null;
   });
 
   final bool noLocation =
@@ -183,15 +187,9 @@ Future<void> recommendPlace() async {
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
 
-      if (data["suggestions"] != null &&
-          data["suggestions"].isNotEmpty) {
-        final first = data["suggestions"][0];
-
+      if (data["suggestions"] != null && data["suggestions"].isNotEmpty) {
         setState(() {
-          recommendationText =
-              '${first["name"]}\n\n'
-              '${first["description"]}\n\n'
-              'Area: ${first["area"]}';
+          recommendation = data["suggestions"][0];
         });
       } else {
         setState(() {
@@ -207,8 +205,13 @@ Future<void> recommendPlace() async {
     setState(() {
       recommendationText = 'Error: $e';
     });
+  } finally {
+    setState(() {
+      isLoadingRecommendation = false;
+    });
   }
 }
+
   @override
   Widget build(BuildContext context) {
     final bool noLocation =
@@ -277,16 +280,63 @@ Future<void> recommendPlace() async {
               ),
             ),
             const SizedBox(height: 24),
-            if (recommendationText.isNotEmpty)
+            if (isLoadingRecommendation) ...[
+              const SizedBox(height: 24),
+              const Center(child: CircularProgressIndicator()),
+            ] else if (recommendation != null) ...[
+              const SizedBox(height: 24),
+              buildRecommendationCard(),
+            ] else if (recommendationText.isNotEmpty) ...[
+              const SizedBox(height: 24),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Text(recommendationText),
                 ),
               ),
+            ]
           ],
         ),
       ),
     );
   }
+
+  Widget buildRecommendationCard() {
+  if (recommendation == null) {
+    return const SizedBox.shrink();
+  }
+
+  final reasoning = recommendation!['reasoning'] as List<dynamic>? ?? [];
+
+  return Card(
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            recommendation!['name'] ?? '',
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(recommendation!['description'] ?? ''),
+          const SizedBox(height: 12),
+          Text('Area: ${recommendation!['area'] ?? '-'}'),
+          Text('Category: ${recommendation!['category'] ?? '-'}'),
+          Text('Address: ${recommendation!['address'] ?? '-'}'),
+          const SizedBox(height: 12),
+          const Text(
+            'Why this place',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          ...reasoning.take(3).map((item) => Text('• $item')),
+        ],
+      ),
+    ),
+  );
+}
 }
