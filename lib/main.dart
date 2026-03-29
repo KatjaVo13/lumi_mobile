@@ -30,34 +30,83 @@ class LumiHomePage extends StatefulWidget {
 }
 
 class _LumiHomePageState extends State<LumiHomePage> {
-  String message = 'Tap the button to test backend connection';
+   final String baseUrl = 'http://192.168.60.82:8000';
 
-  // Replace this with your real computer IP
-  final String baseUrl = 'http://192.168.60.82:8000';
+  String statusMessage = 'Tap the button to load likes';
+  bool isLoading = false;
+  List<dynamic> likes = [];
 
-  Future<void> checkBackend() async {
+  Future<void> loadLikes() async {
     setState(() {
-      message = 'Checking backend...';
+      isLoading = true;
+      statusMessage = 'Loading likes...';
     });
 
     try {
-      final response = await http.get(Uri.parse('$baseUrl/health'));
+      final response = await http.get(Uri.parse('$baseUrl/likes'));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        setState(() {
-          message = 'Backend OK: ${data['status']}';
-        });
+
+        if (data is List) {
+          setState(() {
+            likes = data;
+            statusMessage = data.isEmpty ? 'No liked places yet' : 'Loaded';
+          });
+        } else {
+          setState(() {
+            likes = [];
+            statusMessage = 'Unexpected response format';
+          });
+        }
       } else {
         setState(() {
-          message = 'Server error: ${response.statusCode}';
+          likes = [];
+          statusMessage = 'Server error: ${response.statusCode}';
         });
       }
     } catch (e) {
       setState(() {
-        message = 'Connection failed: $e';
+        likes = [];
+        statusMessage = 'Connection failed: $e';
+      });
+    } finally {
+      setState(() {
+        isLoading = false;
       });
     }
+  }
+
+  Widget buildLikeCard(dynamic item) {
+    final tags = item['tags'] is List ? (item['tags'] as List).join(', ') : '';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              item['place_name'] ?? 'Unknown place',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text('Category: ${item['category'] ?? '-'}'),
+            Text('Area: ${item['area'] ?? '-'}'),
+            const SizedBox(height: 8),
+            Text(item['description'] ?? ''),
+            if (tags.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Tags: $tags'),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -66,28 +115,38 @@ class _LumiHomePageState extends State<LumiHomePage> {
       appBar: AppBar(
         title: const Text('Lumi'),
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'Hello, I am Lumi',
-                style: TextStyle(fontSize: 24),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            const Text(
+              'Liked places',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
               ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: checkBackend,
-                child: const Text('Check backend'),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: isLoading ? null : loadLikes,
+              child: const Text('Load likes'),
+            ),
+            const SizedBox(height: 12),
+            Text(statusMessage),
+            const SizedBox(height: 12),
+            Expanded(
+              child: likes.isEmpty
+                  ? const Center(
+                      child: Text('No items to show'),
+                    )
+                  : ListView.builder(
+                      itemCount: likes.length,
+                      itemBuilder: (context, index) {
+                        return buildLikeCard(likes[index]);
+                      },
+                    ),
+            ),
+          ],
         ),
       ),
     );
