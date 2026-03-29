@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -80,6 +83,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+
+final String baseUrl = 'http://192.168.60.82:8000';
+
   String locationStatus = 'Checking location...';
   String? selectedCity = 'Helsinki';
   String selectedMood = 'curious';
@@ -137,21 +143,72 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void recommendPlace() {
-    final bool noLocation =
-        locationStatus == 'Location not allowed' ||
-        locationStatus == 'Location permanently denied' ||
-        locationStatus == 'Location services are off' ||
-        locationStatus.startsWith('Location error');
+Future<void> recommendPlace() async {
+  setState(() {
+    recommendationText = 'Lumi is thinking...';
+  });
 
+  final bool noLocation =
+      locationStatus == 'Location not allowed' ||
+      locationStatus == 'Location permanently denied' ||
+      locationStatus == 'Location services are off' ||
+      locationStatus.startsWith('Location error');
+
+  double userLat = 0;
+  double userLon = 0;
+
+  try {
+    if (!noLocation) {
+      final position = await Geolocator.getCurrentPosition();
+      userLat = position.latitude;
+      userLon = position.longitude;
+    }
+
+    final body = {
+      "area": noLocation ? selectedCity : "",
+      "mood": selectedMood,
+      "time_available": 30,
+      "transport": "walk",
+      "weather": "dry",
+      "user_lat": userLat,
+      "user_lon": userLon,
+    };
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/walk'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode(body),
+    ).timeout(const Duration(seconds: 15));
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+
+      if (data["suggestions"] != null &&
+          data["suggestions"].isNotEmpty) {
+        final first = data["suggestions"][0];
+
+        setState(() {
+          recommendationText =
+              '${first["name"]}\n\n'
+              '${first["description"]}\n\n'
+              'Area: ${first["area"]}';
+        });
+      } else {
+        setState(() {
+          recommendationText = 'No suggestions found';
+        });
+      }
+    } else {
+      setState(() {
+        recommendationText = 'Server error: ${response.statusCode}';
+      });
+    }
+  } catch (e) {
     setState(() {
-      recommendationText =
-          'Lumi will recommend a place here.\n\n'
-          'City: ${noLocation ? (selectedCity ?? '-') : 'from current location'}\n'
-          'Mood: $selectedMood';
+      recommendationText = 'Error: $e';
     });
   }
-
+}
   @override
   Widget build(BuildContext context) {
     final bool noLocation =
